@@ -1,0 +1,26 @@
+{
+  "name": "dato-migrate",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Compare two environments to generate migration code",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jbordoe/dato-migrate.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jbordoe/dato-migrate/issues"
+  },
+  "homepage": "https://github.com/jbordoe/dato-migrate#readme",
+  "dependencies": {
+    "@babel/highlight": "^7.18.6",
+    "datocms-client": "^3.5.21",
+    "p-limit": "^4.0.0"
+  }
+}
