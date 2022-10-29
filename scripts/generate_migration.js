@@ -1,7 +1,6 @@
 import util from "util";
 import _ from "lodash";
 import chalk from "chalk";
-import pLimit from "p-limit";
 import Highlight from "@babel/highlight";
 const highlight = Highlight["default"];
 
@@ -11,28 +10,6 @@ import CodeGenerator from '../src/code_generator.js';
 
 const args = process.argv.slice(2);
 
-const ITEM_REF_PATHS = [
-  // Link fields
-  'validators.itemItemType.itemTypes',
-  // Modular Content Fields
-  'validators.richTextBlocks.itemTypes',
-  // Structured Text Fields
-  'validators.structuredTextBlocks.itemTypes',
-  'validators.structuredTextLinks.itemTypes',
-];
-const FIELD_REF_PATHS = [
-  // Modules & Blocks
-  'imagePreviewField',
-  'exceprtField',
-  'orderingField',
-  'titleField',
-  // Slug Field
-  'validators.slugTitleField.titleFieldId',
-];
-const FIELDSET_REF_PATHS = ['fieldset'];
-
-const REF_PATHS = [ITEM_REF_PATHS, FIELD_REF_PATHS, FIELDSET_REF_PATHS].flat();
-
 function info(msg) { console.error(chalk.dim(msg)) }
 function warn(msg) { console.error(chalk.yellow(msg)) }
 function green(msg) { console.error(chalk.green(msg)) }
@@ -41,21 +18,6 @@ function err(msg) { console.error(chalk.red(msg)) }
 function dump(obj) {
   console.error(util.inspect(obj, {colors: true, depth: null}));
 }
-
-function addLookups(objects) {
-  var resp = {
-    byId: _.keyBy(objects, 'id'),
-    ids: objects.map(({id}) => { id }),
-    all: objects
-  };
-  if (objects.length > 0 && objects[0].apiKey) {
-    resp['byApiKey'] = _.keyBy(objects, 'apiKey');
-    resp['apiKeys'] = objects.map(({ apiKey }) => { apiKey });
-  }
-  return resp
-}
-
-
 
 function summariseChanges(changes) {
   return {
@@ -113,7 +75,6 @@ async function generate() {
       });
     }
   });
-
   summary.push('');
 
   if (summary.length == 2) {

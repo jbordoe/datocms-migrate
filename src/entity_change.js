@@ -38,14 +38,14 @@ class DatoCMSEntityChange {
   get requiredInScope() {
     const refdIds = [
       _.get(this.entity, 'parent.id'),
-      DatoCMSEntityChange.REF_PATHS.map((path) => _.get(this.to, 'attributes.' + path, []))
+      DatoCMSEntityChange.REF_PATHS.map((path) => _.get(this.to, path, []))
     ];
     return _.flattenDeep(refdIds).filter((id) => id);
   }
 
   get refPaths() {
     return DatoCMSEntityChange.REF_PATHS
-      .filter((path) => _.get(this.to, 'attributes.' + path));
+      .filter((path) => _.get(this.to, path));
   }
 
   get varName() {
