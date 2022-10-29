@@ -68,13 +68,6 @@ function pickRefs(entity) {
 
 export default envDiff;
 
-function _blankItem() {
-  return  {
-    _fieldsets: _addLookups([]),
-    _fields: _addLookups([]),
-  };
-}
-
 function _addLookups(objects) {
   var resp = {
     byId: _.keyBy(objects, "id"),
@@ -88,16 +81,6 @@ function _addLookups(objects) {
   return resp
 }
 
-function findRefs(obj, paths) {
-  return paths.map((path) => ({
-      id: _.get(obj, path),
-      path: path,
-      data: _.pick(obj, path)
-    }))
-    .filter(({ id }) => id && id.length );
-}
-
-
 function _toStr(obj) {
-  return util.inspect(obj, {depth: null, compact: true});
+  return util.inspect(obj, {depth: null, compact: true, sorted: true});
 }

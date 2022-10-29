@@ -3,49 +3,49 @@ import util from "util";
 
 class CodeGenerator {
   generate(changes, meta) {
-    var state = {
+    this.state = {
       vars: {},
       flags: {},
       id2obj: _.keyBy(meta, "id"),
       var2obj: _.keyBy(meta, "varName"),
+      refd: this.findDependencies(changes.all.all),
     };
-    state['refd'] = this.findDependencies(changes.all.all, state);
 
     // TODO: pass an optional logger into this class
     //info("Generating migration code...");
     /* NOTE: the order here is very important
      * We need to ensure entities exist before they can be referenced */
-    const deletedItemsCode = this.itemsDestroyCode(changes.items.del, state);
-    const updatedItemsCode = this.itemsUpdateCode(changes.items.mod, state);
-    const newItemsCode = this.itemsCreateCode(changes.items.add, state)
+    const deletedItemsCode = this.itemsDestroyCode(changes.items.del);
+    const updatedItemsCode = this.itemsUpdateCode(changes.items.mod);
+    const newItemsCode = this.itemsCreateCode(changes.items.add)
 
     // Find items for new fieldsets which are not yet in scope
-    const fieldsetRefdItems = this.findDependencies(changes.fieldsets.add, state)
-      .filter(({ varName }) => !(varName in state.vars));
+    const fieldsetRefdItems = this.findDependencies(changes.fieldsets.add)
+      .filter(({ varName }) => !(varName in this.state.vars));
     // Add fieldset items to current scope
-    const fieldsetScopePrepCode = this.scopePrepCode(fieldsetRefdItems, state);
+    const fieldsetScopePrepCode = this.scopePrepCode(fieldsetRefdItems);
 
-    const newFieldsetsCode = this.fieldsetsCreateCode(changes.fieldsets.add, state);
-    const dropFieldsetsCode = this.fieldsetsDestroyCode(changes.fieldsets.del, state);
-    const updateFieldsetsCode = this.fieldsetsUpdateCode(changes.fieldsets.mod, state);
+    const newFieldsetsCode = this.fieldsetsCreateCode(changes.fieldsets.add);
+    const dropFieldsetsCode = this.fieldsetsDestroyCode(changes.fieldsets.del);
+    const updateFieldsetsCode = this.fieldsetsUpdateCode(changes.fieldsets.mod);
 
     const dropFieldsCode = this.fieldsDeleteCode(changes.fields.del);
     // Find entities for fields to add, which are not yet in scope
-    const fieldRefdItems = this.findDependencies(changes.fields.all, state)
-      .filter(({ varName }) => !(varName in state.vars));
+    const fieldRefdItems = this.findDependencies(changes.fields.all)
+      .filter(({ varName }) => !(varName in this.state.vars));
     // Add entities referenced by coming field changes to scope
-    const fieldScopePrepCode = this.scopePrepCode(fieldRefdItems, state);
-    const updateFieldsCode = this.fieldsUpdateCode(changes.fields.mod, state);
-    const newFieldsCode = this.fieldsCreateCode(changes.fields.add, state);
+    const fieldScopePrepCode = this.scopePrepCode(fieldRefdItems);
+    const updateFieldsCode = this.fieldsUpdateCode(changes.fields.mod);
+    const newFieldsCode = this.fieldsCreateCode(changes.fields.add);
 
-    const itemRefs = this.findDependencies(changes.items.all, state)
-    const itemScopePrepCode = this.scopePrepCode(itemRefs, state);
-    const itemRefsCode = this.itemsRefUpdateCode(changes.items.all, state);
+    const itemRefs = this.findDependencies(changes.items.all)
+    const itemScopePrepCode = this.scopePrepCode(itemRefs);
+    const itemRefsCode = this.itemsRefUpdateCode(changes.items.all);
     var str = `'use strict';
-${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
+${this.state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
 
     module.exports = async (client) => {
-      ${state.flags.allItems ? "const allItems = client.itemTypes.all();" : ""}
+      ${this.state.flags.allItems ? "const allItems = client.itemTypes.all();" : ""}
       ${deletedItemsCode}
       ${updatedItemsCode}
       ${newItemsCode}
@@ -67,16 +67,16 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return str;
   }
 
-  itemsCreateCode(itemChanges, state) {
+  itemsCreateCode(itemChanges) {
     if (!_.get(itemChanges, 'length')) { return '' }
 
     var code = "/* Create new models/blocks */\n\n"
     for (const change of itemChanges) {
       var itemCode = '';
       // only assign to a var if we'll use it later
-      if (state.refd.includes(change.entity.id) && !state.vars[change.varName]) {
+      if (this.state.refd.includes(change.entity.id) && !this.state.vars[change.varName]) {
         code += `const ${change.varName} = `
-        state.vars[change.varName] = true;
+        this.state.vars[change.varName] = true;
       }
       const itemObj = util.inspect(_.omit(change.to), {depth: null});
       code += `await client.itemTypes.create(${itemObj});`;
@@ -86,10 +86,10 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code;
   }
 
-  itemsDestroyCode(items, state) {
+  itemsDestroyCode(items) {
     if (!_.get(items, 'length')) { return '' }
 
-    state.flags['pLimit'] = true;
+    this.state.flags['pLimit'] = true;
     return `
 /* Delete models */
     const removeModels = async(client) => {
@@ -109,15 +109,15 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
   `
   }
 
-  itemsUpdateCode(items, state) {
+  itemsUpdateCode(items) {
     if (!_.get(items, 'length')) { return '' }
 
     var code = "/* Update models/blocks */\n\n";
     for (const item of items) {
       // only assign to a var if we'll use it later
-      if (state.refd.includes(item.id) && !state.vars[item.varName]) {
+      if (this.state.refd.includes(item.id) && !this.state.vars[item.varName]) {
         code += `const ${item.varName} = `
-        state.vars[item.varName] = true;
+        this.state.vars[item.varName] = true;
       }
       // TODO: use paralellism in generated code?
       code += `await client.itemTypes.update(
@@ -130,7 +130,7 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code;
   }
 
-  itemsRefUpdateCode(items, state) {
+  itemsRefUpdateCode(items) {
     if (!_.get(items, 'length')) { return '' }
 
     var code = "/* Update item references */\n\n";
@@ -141,7 +141,7 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
         attrs = _.merge(attrs, data);
       }
       item.modified.attrs = attrs;
-      this.injectReferenceVars(item, state)
+      this.injectReferenceVars(item)
       // TODO: use paralellism in generated code
       code += `await client.field.update(
       '${item.current.apiKey}',
@@ -153,13 +153,13 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code;
   }
 
-  scopePrepCode(entities, state) {
+  scopePrepCode(entities) {
     if (!_.get(entities, 'length')) { return '' }
     entities = {all: entities, ..._.groupBy(entities, 'type')};
 
     var code = '';
     if (entities.item) {
-      state.flags['allItems'] = true;
+      this.state.flags['allItems'] = true;
       const varNames = entities.item.map(({ varName }) => varName);
       const apiKeys = entities.item.map(({ current }) => current.apiKey);
 
@@ -195,11 +195,11 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
       );
     `;
     }
-    entities.all.forEach(({ varName }) => state.vars[varName] = true);
+    entities.all.forEach(({ varName }) => this.state.vars[varName] = true);
     return code;
   }
 
-  fieldsetsCreateCode(changes, state) {
+  fieldsetsCreateCode(changes) {
     if (!_.get(changes, 'length')) { return '' }
 
     var code = "/* Create fieldsets */\n\n";
@@ -208,9 +208,9 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
 
     for (const change of changes) {
       // only assign to a var if we'll use it later
-      if (state.refd.includes(change.entity.id) && !state.vars[change.varName]) {
+      if (this.state.refd.includes(change.entity.id) && !this.state.vars[change.varName]) {
         code += `const ${change.varName} = `
-        state.vars[change.varName] = true;
+        this.state.vars[change.varName] = true;
       }
       // TODO: use paralellism in generated code
       code += `await client.fieldset.create(
@@ -226,10 +226,10 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code;
   }
 
-  fieldsetsDestroyCode(fsChanges, state) {
+  fieldsetsDestroyCode(fsChanges) {
     if (!_.get(fsChanges, 'length')) { return '' }
 
-    state.flags['pLimit'] = true;
+    this.state.flags['pLimit'] = true;
     fsChanges = fsChanges.sort(({ entity }) => entity.parent.varName);
 
     return `/* Delete fieldsets */
@@ -254,7 +254,7 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     };
   }
 
-  fieldsetsUpdateCode(fieldsets, state) {
+  fieldsetsUpdateCode(fieldsets) {
     if (!_.get(fieldsets, 'length')) { return '' }
 
     var code = "/* Update fieldsets */\n";
@@ -263,9 +263,9 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
 
     for (const fieldset of fieldsets) {
       // only assign to a var if we'll use it later
-      if (state.refd.includes(fieldset.id) && !state.vars[fieldset.varName]) {
+      if (this.state.refd.includes(fieldset.id) && !this.state.vars[fieldset.varName]) {
         code += `const ${fieldset.varName} = `
-        state.vars[fieldset.varName] = true;
+        this.state.vars[fieldset.varName] = true;
       }
       // TODO: use paralellism in generated code
       code += `await client.fieldset.update(
@@ -278,7 +278,7 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code
   }
 
-  fieldsCreateCode(fieldChanges, state) {
+  fieldsCreateCode(fieldChanges) {
     if (!_.get(fieldChanges, 'length')) { return '' }
 
     var code = "/* Create fields */\n\n";
@@ -292,11 +292,11 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
       }
     });
     for (const fieldChange of fieldChanges) {
-      this.injectReferenceVars(fieldChange, state)
+      this.injectReferenceVars(fieldChange)
       // only assign to a var if we'll use it later
-      if (state.refd.includes(fieldChange.entity.id) && !state.vars[fieldChange.varName]) {
+      if (this.state.refd.includes(fieldChange.entity.id) && !this.state.vars[fieldChange.varName]) {
         code += `const ${fieldChange.varName} = `
-        state.vars[fieldChange.varName] = true;
+        this.state.vars[fieldChange.varName] = true;
       }
       // TODO: use paralellism in generated code
       code += `await client.field.create(
@@ -327,18 +327,18 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code;
   }
 
-  fieldsUpdateCode(fields, state) {
+  fieldsUpdateCode(fields) {
     if (!_.get(fields, 'length')) { return '' }
 
     var code = "/* Update Fields */\n\n";
     // TODO: group fields by item
     fields = fields.sort(({ old }) => old._uniqueApiKey);
     for (const field of fields) {
-      this.injectReferenceVars(field, state)
+      this.injectReferenceVars(field)
       // only assign to a var if we'll use it later
-      if (state.refd.includes(field.id) && !state.vars[field.varName]) {
+      if (this.state.refd.includes(field.id) && !this.state.vars[field.varName]) {
         code += `const ${field.varName} = `
-        state.vars[field.varName] = true;
+        this.state.vars[field.varName] = true;
       }
       // TODO: use paralellism in generated code
       code += `await client.field.update(
@@ -351,12 +351,12 @@ ${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
     return code;
   }
 
-  injectReferenceVars(change, state) {
+  injectReferenceVars(change) {
     const deps = change.refPaths;
 
     const id2var = (refId) => {
-      const refVar = state.id2obj[refId].varName;
-      if (!state.vars[refVar]) {
+      const refVar = this.state.id2obj[refId].varName;
+      if (!this.state.vars[refVar]) {
         err(`Variable ${refVar} not yet in scope!`);
         //      throw('error');
       }
