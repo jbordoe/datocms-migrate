@@ -1,0 +1,175 @@
+import MetaEntity from '../src/meta_entity.js';
+import assert from 'assert';
+
+describe('MetaEntity', function () {
+  describe('#apiKey()', function () {
+    it('should return api key from source when present', function () {
+      const entity = new MetaEntity('item', {apiKey: 'foo'}, undefined, undefined);
+      assert.equal(entity.apiKey, 'foo');
+    });
+    it('should return api key from target when no source', function () {
+      const entity = new MetaEntity('item', undefined, {apiKey: 'foo'}, undefined);
+      assert.equal(entity.apiKey, 'foo');
+    });
+  });
+
+  describe('#label()', function () {
+    it('should return item name from source when present', function () {
+      const entity = new MetaEntity(
+        'item',
+        {attributes: {name: 'foo'}},
+        undefined,
+        undefined,
+      );
+      assert.equal(entity.label, 'foo');
+    });
+
+    it('should return item name from target when present', function () {
+      const entity = new MetaEntity(
+        'item',
+        undefined,
+        {attributes: {name: 'foo'}},
+        undefined,
+      );
+      assert.equal(entity.label, 'foo');
+    });
+
+    it('should return field label from source when present', function () {
+      const entity = new MetaEntity(
+        'field',
+        {attributes: {label: 'foo'}},
+        undefined,
+        undefined
+      );
+      assert.equal(entity.label, 'foo');
+    });
+
+    it('should return field label from target when present', function () {
+      const entity = new MetaEntity(
+        'field',
+        undefined,
+        {attributes: {label: 'foo'}},
+        undefined,
+      );
+      assert.equal(entity.label, 'foo');
+    });
+
+    it('should return fieldset title from source when present', function () {
+      const entity = new MetaEntity(
+        'fieldset',
+        {attributes: {title: 'foo'}},
+        undefined,
+        undefined,
+      );
+      assert.equal(entity.label, 'foo');
+    });
+
+    it('should return fieldset title from target when present', function () {
+      const entity = new MetaEntity(
+        'fieldset',
+        undefined,
+        {attributes: {title: 'foo'}},
+        undefined,
+      );
+      assert.equal(entity.label, 'foo');
+    });
+  });
+
+  describe('#varName()', function () {
+    it('should return variable name from source when present', function () {
+      const entity = new MetaEntity('item', {varName: 'foo'}, undefined, undefined);
+      assert.equal(entity.varName, 'foo');
+    });
+    it('should return variable name from target when no source', function () {
+      const entity = new MetaEntity('item', undefined, {varName: 'foo'}, undefined);
+      assert.equal(entity.varName, 'foo');
+    });
+  });
+
+  describe('#parent()', function () {
+    it('should return parent meta from source when present', function () {
+      const entity = new MetaEntity(
+        'item',
+        {varName: 'foo', parentItem: {meta: "parentA"}},
+        undefined,
+        undefined
+      );
+      assert.equal(entity.parent, 'parentA');
+    });
+    it('should return parent meta name from target when no source', function () {
+      const entity = new MetaEntity(
+        'item',
+        undefined,
+        {varName: 'foo', parentItem: {meta: "parentB"}},
+        undefined
+      );
+      assert.equal(entity.parent, 'parentB');
+    });
+  });
+
+  describe('#updateState()', function () {
+    it('should wipe state with del function', function () {
+      const entity = new MetaEntity(
+        'item',
+        {varName: 'foo'},
+        undefined,
+        {attributes: {foo: "bar"}}
+      );
+      assert.deepEqual(entity.current, {foo: "bar"});
+
+      entity.updateState({action: "del"})
+      assert.equal(entity.current, undefined);
+    });
+
+    it('should create state with attrs from add function', function () {
+      const entity = new MetaEntity(
+        'item',
+        {varName: 'foo'},
+        undefined,
+        undefined
+      );
+      assert.equal(entity.current, undefined);
+
+      entity.updateState({action: "add", to: {foo: "bar"}})
+      assert.deepEqual(entity.current, {foo: "bar"});
+    });
+
+    it('should merge state with attrs from mod function', function () {
+      const entity = new MetaEntity(
+        'item',
+        {varName: 'foo'},
+        undefined,
+        {attributes: {foo: "bar", hello: "world"}}
+      );
+      assert.deepEqual(entity.current, {foo: "bar", hello: "world"});
+
+      entity.updateState({
+        action: "mod",
+        to: {foo: 123, hallo: "welt", a: {b: "c"}},
+      })
+      assert.deepEqual(
+        entity.current,
+        {foo: 123, hello: "world", hallo: "welt", a: {b: "c"}}
+      );
+    });
+
+    it('should merge state with attrs from modRefs function', function () {
+      const entity = new MetaEntity(
+        'item',
+        {varName: 'foo'},
+        undefined,
+        {attributes: {foo: "bar", hello: "world"}}
+      );
+      assert.deepEqual(entity.current, {foo: "bar", hello: "world"});
+
+      entity.updateState({
+        action: "modRefs",
+        to: {foo: 123, hallo: "welt", a: {b: "c"}},
+      })
+      assert.deepEqual(
+        entity.current,
+        {foo: 123, hello: "world", hallo: "welt", a: {b: "c"}}
+      );
+    });
+  });
+});

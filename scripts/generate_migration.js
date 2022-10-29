@@ -2,9 +2,11 @@ import util from "util";
 import _ from "lodash";
 import chalk from "chalk";
 import pLimit from "p-limit";
-import { SiteClient } from "datocms-client";
 import Highlight from "@babel/highlight";
 const highlight = Highlight["default"];
+
+import getDatoCMSEntities from '../src/get_dato_cms_entities.js';
+import envDiff from '../src/env_diff.js';
 
 const args = process.argv.slice(2);
 
@@ -38,242 +40,41 @@ function err(msg) { console.error(chalk.red(msg)) }
 function dump(obj) {
   console.error(util.inspect(obj, {colors: true, depth: null}));
 }
-function toStr(obj) {
-  return util.inspect(obj, {depth: null, compact: true});
-}
-
-function toMap(objects, key) {
-  return Object.assign(
-    {},
-    ...objects.map((obj) => ({[obj[key]]: obj}))
-  );
-}
 
 function addLookups(objects) {
   var resp = {
-    byId: toMap(objects, 'id'),
+    byId: _.keyBy(objects, 'id'),
     ids: objects.map(({id}) => { id }),
     all: objects
   };
   if (objects.length > 0 && objects[0].apiKey) {
-    resp['byApiKey'] = toMap(objects, 'apiKey');
+    resp['byApiKey'] = _.keyBy(objects, 'apiKey');
     resp['apiKeys'] = objects.map(({ apiKey }) => { apiKey });
   }
   return resp
 }
 
-function findRefs(obj, paths) {
-  return paths.map((path) => ({
-      id: _.get(obj, path),
-      path: path,
-      data: _.pick(obj, path)
-    }))
-    .filter(({ id }) => id && id.length );
-}
+function itemsCreateCode(itemChanges, state) {
+  if (!_.get(itemChanges, 'length')) { return '' }
 
-function objDiff(oldItem, newItem) {
-  var mods = {attrs: {}};
-
-  if (oldItem._fieldsets && newItem._fieldsets) {
-    const fieldsetsDiff = diff(oldItem._fieldsets, newItem._fieldsets);
-    if (fieldsetsDiff) {
-      mods['_fieldsets'] = groupByAction(fieldsetsDiff);
-    }
-  }
-  if (oldItem._fields && newItem._fields) {
-    const fieldsDiff = diff(oldItem._fields, newItem._fields);
-    if (fieldsDiff) {
-      mods['_fields'] = groupByAction(fieldsDiff);
-    }
-  }
-
-  var to_omit = [
-    'id', 'itemId', 'itemType',
-    '_varName', '_fieldsets', '_fields',
-    '_uniqueApiKey', 'fields', 'fieldsets',
-  ];
-  oldItem = _.omit(oldItem, to_omit);
-
-  for (const key in _.omit(newItem, to_omit)) {
-    if (toStr(oldItem[key]) !== toStr(newItem[key])) {
-      mods.attrs[key] = newItem[key]
-    }
-  }
-  if (_.isEmpty(mods.attrs)) {
-    delete mods.attrs;
-  } else {
-    mods.attrs = _.omitBy(mods.attrs, ((v, k) => k[0] === '_'));
-
-    const fieldDependencies = findRefs(mods.attrs, FIELD_REF_PATHS)
-    mods.attrs = _.omit(mods.attrs, FIELD_REF_PATHS)
-    mods['_fieldDependencies'] = fieldDependencies.length ? fieldDependencies : undefined
-
-    const itemDependencies = findRefs(mods.attrs, ITEM_REF_PATHS)
-    mods.attrs = _.omit(mods.attrs, ITEM_REF_PATHS)
-    mods['_itemDependencies'] = itemDependencies.length ? itemDependencies : undefined
-
-    const fsDependencies = findRefs(mods.attrs, FIELDSET_REF_PATHS)
-    mods.attrs = _.omit(mods.attrs, FIELDSET_REF_PATHS)
-    mods['_fieldsetDependencies'] = fsDependencies.length ? fsDependencies : undefined
-
-    const allDeps = [...fieldDependencies, ...itemDependencies, ...fsDependencies];
-    mods['_allDependencies'] = allDeps.length ? allDeps : undefined;
-  }
-  return mods;
-}
-
-function blankItem() {
-  return  {
-    _fieldsets: addLookups([]),
-    _fields: addLookups([]),
-  };
-}
-
-// TODO: items should refer to models/blocks, use a more general name
-function diff(oldItems, newItems) {
-  var metaItems = []
-  var mods;
-
-  // TODO: refactor all this
-  const toAdd = newItems.all.filter(({ id }) => !oldItems.byId[id])
-    .map(item => {
-        item['_modified'] = objDiff(blankItem(), item);
-        return item
-  });
-
-  const shared = oldItems.all.filter(({ id }) => newItems.byId[id])
-    .map(oldItem => {
-      mods = objDiff(oldItem, newItems.byId[oldItem.id]);
-      oldItem['_modified'] = mods;
-      return oldItem
-    })
-
-  const toMod = shared.filter(({ _modified }) => _modified);
-  const noDiff = shared.filter(({ _modified }) => !_modified);
-
-  const toDel = oldItems.all.filter(({ id }) => !newItems.byId[id]);
-
-  for (const newItem of toAdd) {
-    mods = newItem._modified;
-    delete newItem['_modified'];
-
-    const meta = {
-      type: newItem._type,
-      id: newItem.id,
-      action: 'add',
-      new: newItem,
-      current: undefined,
-      varName: newItem._varName,
-      itemVar: newItem._itemVar,
-      modified: mods,
-    };
-    metaItems.push(meta);
-  }
-  for (const oldItem of toDel) {
-    const meta = {
-      type: oldItem._type,
-      id: oldItem.id,
-      action: 'del',
-      old: oldItem,
-      current: oldItem,
-      varName: oldItem._varName,
-    };
-    metaItems.push(meta);
-  }
-
-  for (const oldItem of toMod) {
-    mods = oldItem._modified;
-    delete oldItem['_modified'];
-
-    const meta = {
-      type: oldItem._type,
-      id: oldItem.id,
-      action: 'mod',
-      old: oldItem,
-      new: newItems.byId[oldItem.id],
-      current: oldItem,
-      varName: oldItem._varName,
-      modified: mods,
-    };
-    metaItems.push(meta);
-  }
-  for (const item of noDiff) {
-    const meta = {
-      type: item._type,
-      id: item.id,
-      action: 'none',
-      old: item,
-      new: item,
-      current: item,
-      varName: item._varName,
-    };
-    metaItems.push(meta);
-  }
-  return metaItems;
-}
-
-async function getEntities(env) {
-  //TODO: create an RO token specifically for this tool
-  const client = new SiteClient(
-    process.env.DATO_READONLY_API_TOKEN,
-    (env === 'primary' || !env) ? {} : { environment: env }
-  );
-
-  const limit = pLimit(5);
-
-  var items = await client.itemTypes.all();
-
-  for (const item of items) {
-    item['_varName'] = _.camelCase(item.apiKey + 'Model');
-    item['_type'] = 'item';
-
-    item['_fieldsets'] = await limit(async () => {
-      var fieldsets = await client.fieldsets.all(item.id);
-      fieldsets.forEach((fs) => {
-        fs['_varName'] = _.camelCase(item.apiKey + 'fieldset' + fs.title);
-        fs['_itemVar'] = item._varName;
-        fs['_type'] = 'fieldset';
-      });
-      return addLookups(fieldsets);
-    });
-
-    item['_fields'] = await limit(async () => {
-      var fields = await client.fields.all(item.id);
-      fields.forEach((field) => {
-        field['_varName'] = _.camelCase(item.apiKey + 'field' + field.apiKey);
-        field['_uniqueApiKey'] = `${item.apiKey}::${field.apiKey}`;
-        field['_itemId'] = item.id;
-        field['_itemVar'] = item._varName;
-        field['_type'] = 'field';
-      });
-      return addLookups(fields);
-    });
-  }
-  return addLookups(items);
-}
-
-function itemsCreateCode(items, state) {
-  if (!items.length) { return '' }
-
-  const omitKeys = ['id', 'fields', '_varName', '_fieldsets', '_fields', '_fieldsets'];
   var code = "/* Create new models/blocks */\n\n"
-  for (const item of items) {
+  for (const change of itemChanges) {
     var itemCode = '';
     // only assign to a var if we'll use it later
-    if (state.refd.includes(item.id) && !state.vars[item.varName]) {
-      code += `const ${item.varName} = `
-      state.vars[item.varName] = true;
+    if (state.refd.includes(change.entity.id) && !state.vars[change.varName]) {
+      code += `const ${change.varName} = `
+      state.vars[change.varName] = true;
     }
-    const itemObj = util.inspect(_.omit(item.modified.attrs, omitKeys), {depth: null});
+    const itemObj = util.inspect(_.omit(change.to), {depth: null});
     code += `await client.itemTypes.create(${itemObj});`;
     code += "\n\n";
-    item.current = item.modified.attrs;
+    change.entity.current = {...(change.entity.current || {}), ...change.to};
   }
   return code;
 }
 
 function itemsDestroyCode(items, state) {
-  if (!items.length) { return '' }
+  if (!_.get(items, 'length')) { return '' }
 
   state.flags['pLimit'] = true;
   return `
@@ -296,7 +97,7 @@ function itemsDestroyCode(items, state) {
 }
 
 function itemsUpdateCode(items, state) {
-  if (!items.length) { return '' }
+  if (!_.get(items, 'length')) { return '' }
 
   var code = "/* Update models/blocks */\n\n";
   for (const item of items) {
@@ -317,7 +118,7 @@ function itemsUpdateCode(items, state) {
 }
 
 function itemsRefUpdateCode(items, state) {
-  if (!items.length) { return '' }
+  if (!_.get(items, 'length')) { return '' }
 
   var code = "/* Update item references */\n\n";
   for (const item of items.filter(({ modified: m }) => m && m._allDependencies)) {
@@ -340,7 +141,7 @@ function itemsRefUpdateCode(items, state) {
 }
 
 function scopePrepCode(entities, state) {
-  if (!entities.length) { return '' }
+  if (!_.get(entities, 'length')) { return '' }
   entities = {all: entities, ..._.groupBy(entities, 'type')};
 
   var code = '';
@@ -385,44 +186,46 @@ function scopePrepCode(entities, state) {
   return code;
 }
 
-function fieldsetsCreateCode(fieldsets, state) {
-  if (!fieldsets.length) { return '' }
+function fieldsetsCreateCode(changes, state) {
+  if (!_.get(changes, 'length')) { return '' }
 
-  const omitKeys = ['id', 'itemType', "_varName", "_itemVar"];
   var code = "/* Create fieldsets */\n\n";
   // TODO: group fieldsets by item
-  fieldsets = fieldsets.sort(({ itemVar }) => itemVar);
+  changes = changes.sort(({ entity }) => entity.parent.varName);
 
-  for (const fieldset of fieldsets) {
+  for (const change of changes) {
     // only assign to a var if we'll use it later
-    if (state.refd.includes(fieldset.id) && !state.vars[fieldset.varName]) {
-      code += `const ${fieldset.varName} = `
-      state.vars[fieldset.varName] = true;
+    if (state.refd.includes(change.entity.id) && !state.vars[change.varName]) {
+      code += `const ${change.varName} = `
+      state.vars[change.varName] = true;
     }
   // TODO: use paralellism in generated code
     code += `await client.fieldset.create(
-      ${fieldset.itemVar}.id,
-      ${util.inspect(_.omit(fieldset.new, omitKeys))}
+      ${change.entity.parent.varName}.id,
+      ${util.inspect(change.to)}
     );
   `;
-    fieldset.current = fieldset.new;
+    change.entity.current = {
+      ...(change.entity.current || {}),
+      ...change.to
+    };
   }
   return code;
 }
 
-function fieldsetsDestroyCode(fieldsets, state) {
-  if (!fieldsets.length) { return '' }
+function fieldsetsDestroyCode(fsChanges, state) {
+  if (!_.get(fsChanges, 'length')) { return '' }
 
   state.flags['pLimit'] = true;
-  fieldsets = fieldsets.sort(({ itemVar }) => itemVar);
+  fsChanges = fsChanges.sort(({ entity }) => entity.parent.varName);
 
   return `/* Delete fieldsets */
     const removeFieldsets = async(client) => {
     const limit = pLimit(5);
 
-    const idsToDelete = ${util.inspect(fieldsets.map(({old}) => old.id))};
+    const idsToDelete = ${util.inspect(fsChanges.map(({old}) => old.id))};
     const promises = idsToDelete.map(
-      (fieldsetId) => limit(() => client.fieldset.destroy(fieldsetId))
+      (entity) => limit(() => client.fieldset.destroy( entity.id ))
     );
 
     return Promise.all(promises).catch((error) => {
@@ -432,10 +235,14 @@ function fieldsetsDestroyCode(fieldsets, state) {
   };
   await removeFieldsets(client);
   `
+  change.entity.current = {
+    ...(change.entity.current || {}),
+    ...change.to
+  };
 }
 
 function fieldsetsUpdateCode(fieldsets, state) {
-  if (!fieldsets.length) { return '' }
+  if (!_.get(fieldsets, 'length')) { return '' }
 
   var code = "/* Update fieldsets */\n";
   // TODO: group fields by item
@@ -458,55 +265,57 @@ function fieldsetsUpdateCode(fieldsets, state) {
   return code
 }
 
-function fieldsCreateCode(fields, state) {
-  if (!fields.length) { return '' }
+function fieldsCreateCode(fieldChanges, state) {
+  if (!_.get(fieldChanges, 'length')) { return '' }
 
   var code = "/* Create fields */\n\n";
-  // TODO: group fields by item
+  // TODO: group fields by item?
   // Slugs reference other fields, so ensure they get created last
-  fields = fields.sort(({ new: a}, {new: b}) => {
-    if (a.fieldType === 'slug' && b.fieldType !== 'slug') { return 1 }
-    else if (a.fieldType !== 'slug' && b.fieldType === 'slug') { return -1 }
+  fieldChanges = fieldChanges.sort((a,b) => {
+    if (a.to.fieldType === 'slug' && b.to.fieldType !== 'slug') { return 1 }
+    else if (a.to.fieldType !== 'slug' && b.to.fieldType === 'slug') { return -1 }
     else {
-      return a._uniqueApiKey === b._uniqueApiKey
-        ? 0 : a._uniqueApiKey < b._uniqueApiKey ? -1 : 1
+      return a.apiKey === b.apiKey ? 0 : a.apiKey < b.apiKey ? -1 : 1
     }
   });
-  for (const field of fields) {
-    injectReferenceVars(field, state)
+  for (const fieldChange of fieldChanges) {
+    injectReferenceVars(fieldChange, state)
     // only assign to a var if we'll use it later
-    if (state.refd.includes(field.id) && !state.vars[field.varName]) {
-      code += `const ${field.varName} = `
-      state.vars[field.varName] = true;
+    if (state.refd.includes(fieldChange.entity.id) && !state.vars[fieldChange.varName]) {
+      code += `const ${fieldChange.varName} = `
+      state.vars[fieldChange.varName] = true;
     }
   // TODO: use paralellism in generated code
     code += `await client.field.create(
-      ${field.itemVar}.id,
-      ${util.inspect(field.modified.attrs, {depth: null})}
+      ${fieldChange.entity.parent.varName}.id,
+      ${util.inspect(fieldChange.to, {depth: null})}
     );
   `;
-    field.current = field.modified.attrs;
+    fieldChange.entity.current = {
+      ...(fieldChange.entity.current || {}),
+      ...fieldChange.to
+    };
   }
   code = code.replace(/'__REF__|__REF__'/g, '');
   return code;
 }
 
 function fieldsDeleteCode(fields) {
-  if (!fields.length) { return '' }
+  if (!_.get(fields, 'length')) { return '' }
 
   var code = "/* Delete Fields */\n\n";
   // TODO: group fields by item
-  fields = fields.sort(({ old }) => old._uniqueApiKey);
+  fields = fields.sort(({ entity }) => entity.apiKey);
   for (const field of fields) {
   // TODO: use paralellism in generated code
-    code += `await client.field.destroy('${field.old._uniqueApiKey}');
+    code += `await client.field.destroy('${field.entity.apiKey}');
 `;
   }
   return code;
 }
 
 function fieldsUpdateCode(fields, state) {
-  if (!fields.length) { return '' }
+  if (!_.get(fields, 'length')) { return '' }
 
   var code = "/* Update Fields */\n\n";
   // TODO: group fields by item
@@ -529,8 +338,8 @@ function fieldsUpdateCode(fields, state) {
   return code;
 }
 
-function injectReferenceVars(entity, state) {
-  const deps = entity.modified._allDependencies || [];
+function injectReferenceVars(change, state) {
+  const deps = change.refPaths;
 
   const id2var = (refId) => {
     const refVar = state.id2obj[refId].varName;
@@ -542,48 +351,25 @@ function injectReferenceVars(entity, state) {
   }
   for (const {id, path} of deps) {
     const modified = typeof(id) === 'string' ? id2var(id) : id.map(id2var)
-    _.set(entity.modified.attrs, path, modified);
+    _.set(entity.to, path, modified);
   }
 }
 
 function findDependencies(changes, state) {
-  // Entities with a parent item
-  const parentItems = _.map(changes, 'itemVar')
-    .filter((v) => v)
-    .map((varName) => {
-      const obj = state.var2obj[varName];
-      if (obj) { return obj } else { throw 'var without object: ' + varName }
-    });
-  // Items referenced in these entities' attributes
-  const refdEntities = changes
-    .map(({ modified }) => _.get(modified, '_allDependencies', []))
-    .flat()
-    .map(({ id }) => id)
-    .flat()
-    .map((id) => {
-      const obj = state.id2obj[id];
-      if (obj) { return obj } else { throw 'id without object: ' + id }
-    });
-
-  return _.uniqBy([...parentItems, ...refdEntities], 'id')
+  return _(changes)
+    .map((ch) => ch.requiredInScope)
+    .flatten()
+    .filter((v) => !!v)
+    .uniqBy('id')
+    .value();
 }
 
-function findAllReferencedIds(changes) {
-  const refIds = changes.all.all
-    .filter(({ modified }) => modified)
-    .map(({ modified: { _allDependencies: deps }}) => deps || [])
-    .flat()
-    .map(({id}) => id);
-
-  return _.uniq(refIds);
-}
-
-function outputCode(changes) {
+function outputCode(changes, meta) {
   var state = {
     vars: {},
     flags: {},
-    id2obj: toMap(changes.all.all, "id"),
-    var2obj: toMap(changes.all.all, "varName"),
+    id2obj: _.keyBy(meta, "id"),
+    var2obj: _.keyBy(meta, "varName"),
   };
   state['refd'] = findDependencies(changes.all.all, state);
 
@@ -617,8 +403,8 @@ function outputCode(changes) {
   const itemScopePrepCode = scopePrepCode(itemRefs, state);
   const itemRefsCode = itemsRefUpdateCode(changes.items.all, state);
   info('Writing migration code to STDOUT...\n');
-  var str = `${state.flags.pLimit ? "'use strict';" : ""}
-const pLimit = require('p-limit');
+  var str = `'use strict';
+${state.flags.pLimit ? 'const pLimit = require("p-limit");' : ""}
 
 module.exports = async (client) => {
   ${state.flags.allItems ? "const allItems = client.itemTypes.all();" : ""}
@@ -643,31 +429,17 @@ module.exports = async (client) => {
   console.log(highlight(str));
 }
 
-function groupByAction(metaItems) {
+function summariseChanges(changes) {
   return {
-    all: metaItems,
-    add: metaItems.filter(({action}) => action === 'add'),
-    del: metaItems.filter(({action}) => action === 'del'),
-    mod: metaItems.filter(({action, modified}) => {
-      return action === 'mod' && !_.isEmpty(modified.attrs)
-    })
+    items: _groupByAction(changes.filter(({entity}) => entity.type === "item")),
+    fieldsets: _groupByAction(changes.filter(({entity}) => entity.type === "fieldset")),
+    fields: _groupByAction(changes.filter(({entity}) => entity.type === "field")),
+    all: _groupByAction(changes),
   };
 }
 
-function summariseChanges(metaItems) {
-  const fsMeta = metaItems.filter(({modified}) => modified && modified._fieldsets)
-    .map(({modified}) => modified._fieldsets ? modified._fieldsets.all : [])
-    .flat();
-  const fieldMeta = metaItems.filter(({modified}) => modified && modified._fields)
-    .map(({modified}) => modified._fields ? modified._fields.all : [])
-    .flat();
-
-  return {
-    items: groupByAction(metaItems),
-    fieldsets: groupByAction(fsMeta),
-    fields: groupByAction(fieldMeta),
-    all: groupByAction([...metaItems, ...fsMeta, ...fieldMeta]),
-  };
+function _groupByAction(changes) {
+  return {all: changes, ..._.groupBy(changes, 'action')};
 }
 
 async function generate() {
@@ -675,39 +447,40 @@ async function generate() {
   const target_env = args[1];
 
   info("Loading source env: " + chalk.bold(source_env));
-  const old_env = await getEntities(source_env);
+  const old_env = await getDatoCMSEntities(source_env);
 
   info("Loading target env: " + chalk.bold(target_env));
-  const new_env = await getEntities(target_env);
+  const new_env = await getDatoCMSEntities(target_env);
 
   info("Comparing environments...");
-  const changes = diff(old_env, new_env);
+  const diff = envDiff(old_env.all, new_env.all);
 
-  const summarised = summariseChanges(changes);
+  const summarised = summariseChanges(diff.changes);
   var summary = [chalk.bold('\nSummary:')];
   [
     {type: 'model/block', changes: summarised.items},
     {type: 'field',       changes: summarised.fields},
     {type: 'fieldset',    changes: summarised.fieldsets},
   ].forEach(({type, changes}) => {
-    if (changes.add.length) {
+    if (changes.add && changes.add.length) {
       summary.push(chalk.greenBright(`  ${changes.add.length} ${type}(s) to create`));
-      changes.add.forEach(({new: obj}) => {
-        const label = obj.label || obj.name || obj.title;
+      changes.add.forEach(({entity: obj}) => {
+        const label = obj.target.label || obj.target.name || obj.target.title;
         summary.push(chalk.green(`    + ${label}`));
       });
     }
-    if (changes.del.length) {
+    if (changes.del && changes.del.length) {
       summary.push(chalk.redBright(`  ${changes.del.length} ${type}(s) to destroy`));
-      changes.del.forEach(({current: obj}) => {
-        const label = obj.label || obj.name || obj.title;
+      changes.del.forEach(({entity: obj}) => {
+        const label = obj.current.label || obj.current.name || obj.current.title;
         summary.push(chalk.red(`    - ${label}`));
       });
     }
-    if (changes.mod.length) {
-      summary.push(chalk.yellowBright(`  ${changes.mod.length} ${type}(s) to update`));
-      changes.mod.forEach(({current: obj}) => {
-        const label = obj.label || obj.name || obj.title;
+    const allMod = [...(changes.mod || []), ...(changes.modRef || [])].flat();
+    if (allMod && allMod.length) {
+      summary.push(chalk.yellowBright(`  ${allMod.length} ${type}(s) to update`));
+      allMod.forEach(({entity: obj}) => {
+        const label = obj.current.label || obj.current.name || obj.current.title;
         summary.push(chalk.yellow(`    ~ ${label}`));
       });
     }
@@ -719,7 +492,7 @@ async function generate() {
     warn("\nNo changes to make, skipping migration");
   } else {
     console.error(summary.join("\n"))
-    outputCode(summarised);
+    outputCode(summarised, diff.meta);
   }
   green('Done!');
 }
