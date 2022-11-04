@@ -4,7 +4,7 @@ import chalk from "chalk";
 import Highlight from "@babel/highlight";
 const highlight = Highlight["default"];
 
-import getDatoCMSEntities from '../src/get_dato_cms_entities.js';
+import DatoCMSEnvironment from "../src/dato_cms_environment.js";
 import envDiff from '../src/env_diff.js';
 import CodeGenerator from '../src/code_generator.js';
 import ChangeManager from '../src/change_manager.js';
@@ -74,13 +74,15 @@ async function generate() {
   const target_env = args[1];
 
   info("Loading source env: " + chalk.bold(source_env));
-  const old_env = await getDatoCMSEntities(source_env);
+  const old_env = await DatoCMSEnvironment.getEntities(source_env);
 
   info("Loading target env: " + chalk.bold(target_env));
-  const new_env = await getDatoCMSEntities(target_env);
+  const new_env = await DatoCMSEnvironment.getEntities(target_env);
+
+  DatoCMSEnvironment.freeze(new_env, "./test/fixtures/frozen_env.json");
 
   info("Comparing environments...");
-  const diff = envDiff(old_env.all, new_env.all);
+  const diff = envDiff(old_env, new_env);
 
   summarizeChanges(diff);
 
