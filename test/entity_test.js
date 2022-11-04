@@ -8,8 +8,8 @@ describe('DatoCMSEntity', function () {
       assert.equal(entity.apiKey, 'foo');
     });
     it('should return api key when type = field', function () {
-      const entity = new DatoCMSEntity('field', {apiKey: 'foo'}, {apiKey: 'bar'});
-      assert.equal(entity.apiKey, 'foo::bar');
+      const entity = new DatoCMSEntity('field', {apiKey: 'field'}, {apiKey: 'parent'});
+      assert.equal(entity.apiKey, 'parent::field');
     });
     it('should return undefined when type = fieldset', function () {
       const entity = new DatoCMSEntity('fieldset', {title: 'foo'});

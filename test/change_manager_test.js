@@ -106,7 +106,8 @@ describe("ChangeManager", function () {
     });
 
     it("should add refernced item scope step just once", function () {
-      const item = new MetaEntity("item", {id: "100", apiKey: "post"});
+      const item1 = new MetaEntity("item", {id: "101", apiKey: "posta"});
+      const item2 = new MetaEntity("item", {id: "102", apiKey: "postb"});
       const field1 = new MetaEntity("field", {id: "200", apiKey: "sluga"});
       const field2 = new MetaEntity("field", {id: "201", apiKey: "slugb"});
 
@@ -117,7 +118,7 @@ describe("ChangeManager", function () {
           {},
           {
             validators: {
-              itemItemType: {itemTypes: [item.id]}
+              itemItemType: {itemTypes: [item1.id, item2.id]}
             }
           },
         ),
@@ -127,21 +128,20 @@ describe("ChangeManager", function () {
           {},
           {
             validators: {
-              itemItemType: {itemTypes: [item.id]}
+              itemItemType: {itemTypes: [item1.id]}
             }
           },
         )
       ];
 
       const manager = new ChangeManager();
-      assert.containSubset(
-        manager.generateSteps(changes, [item, field1, field2]),
-        [
-          {action: "scope", type: "item", scope: true},
-          {action: "modRefs", type: "field", scope: false},
-          {action: "modRefs", type: "field", scope: false},
-        ]
-      );
+      const steps = manager.generateSteps(changes, [item1, item2, field1, field2]);
+      assert.containSubset(steps, [
+        {action: "scope", id: "posta", type: "item", scope: true},
+        {action: "scope", id: "postb", type: "item", scope: true},
+        {action: "modRefs", type: "field", scope: false},
+        {action: "modRefs", type: "field", scope: false},
+      ]);
     });
 
     it("should add scope step before step requiring a reference", function () {
@@ -166,6 +166,35 @@ describe("ChangeManager", function () {
           {action: "modRefs", type: "field", scope: false},
         ]
       );
+    });
+
+    it("should add scope step before step requiring a reference", function () {
+      const entities = [
+        new MetaEntity("field", undefined, {id: "123"}, undefined),
+        new MetaEntity("fieldset", undefined, {id: "999"}, undefined),
+      ];
+      const changes = [
+        new Change(
+          "modRefs",
+          entities[0],
+          {},
+          {fieldset: "999"},
+        ),
+        new Change(
+          "modRefs",
+          entities[0],
+          {},
+          {fieldset: "999"},
+        ),
+      ];
+
+      const manager = new ChangeManager();
+      const steps = manager.generateSteps(changes, entities);
+      assert.containSubset(steps, [
+        {action: "scope", type: "fieldset", scope: true},
+        {action: "modRefs", type: "field", scope: false},
+        {action: "modRefs", type: "field", scope: false},
+      ]);
     });
 
     it("should not add scope step if action already scoped", function () {

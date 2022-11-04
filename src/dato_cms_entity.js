@@ -1,6 +1,45 @@
 import _ from "lodash"
 
 class DatoCMSEntity {
+  static DEFAULTS = {
+    item: {
+      collectionAppeareance: 'table',
+      collectionAppearance: 'table',
+      orderingField: null,
+      orderingDirection: null,
+      titleField: null,
+      singleton: false,
+      allLocalesRequired: true,
+      sortable: false,
+      modularBlock: false,
+      draftModeActive: false,
+      tree: false,
+      orderingMeta: null,
+      hasSingletonItem: false,
+      hint: null,
+      singletonItem: null,
+      fieldsets: [],
+      imagePreviewField: null,
+      excerptField: null,
+      workflow: null
+    },
+    fieldset: {
+      hint: null,
+      collapsible: false,
+      startCollapsed: false,
+    },
+    //TODO: break down field defaults by field type
+    field: {
+      localized: false,
+      defaultValue: '',
+      hint: null,
+      validators: {},
+      appeareance: {},
+      appearance: {},
+      fieldset: null
+    }
+  };
+
   constructor(type, attributes, parentItem = undefined) {
     this.type = type;
     this.attributes = attributes;
@@ -26,7 +65,7 @@ class DatoCMSEntity {
 
   get apiKey() {
     if (this.type === "field") {
-      return `${this.attributes.apiKey}::${this.parentItem.apiKey}`;
+      return `${this.parentItem.apiKey}::${this.attributes.apiKey}`;
     }
     else {
       return this.attributes.apiKey;
@@ -34,4 +73,5 @@ class DatoCMSEntity {
   }
 }
 
+export { DatoCMSEntity };
 export default DatoCMSEntity;

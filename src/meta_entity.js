@@ -47,7 +47,8 @@ class MetaEntity {
         this.current = undefined;
         break;
       case "add":
-        this.current = change.to;
+        //TODO: make test case to ensure later updates don't hang around
+        this.current = structuredClone(change.to);
         break;
       case "mod":
       case "modRefs":
