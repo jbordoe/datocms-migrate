@@ -11,8 +11,8 @@ function envDiff(oldEntities, newEntities) {
   const metaEntities = _([...oldEntities, ...newEntities])
     .uniqBy('id')
     .map(({ id, type }) => {
-      const oldE = oldIds[id];
-      const newE = newIds[id];
+      const oldE = oldIds[id] || null;
+      const newE = newIds[id] || null;
       const meta = new MetaEntity(type, oldE, newE, oldE);
       if (oldE) { oldE.meta = meta }
       if (newE) { newE.meta = meta }
@@ -54,7 +54,11 @@ function envDiff(oldEntities, newEntities) {
 
 function pickAttrs(entity) {
   const attrs = _(_.get(entity, 'attributes', {}))
-    .omit(['id', 'type', 'meta', ...DatoCMSEntityChange.REF_PATHS])
+    .omit([
+      'id', 'type', 'meta',
+      'fields', 'fieldsets', 'itemType',
+      ...DatoCMSEntityChange.REF_PATHS
+    ])
     .value();
   return !_.isEmpty(attrs) ? attrs : undefined;
 }

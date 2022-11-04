@@ -1,7 +1,76 @@
 import MetaEntity from '../src/meta_entity.js';
-import assert from 'assert';
+
+import chai from "chai";
+import chaiSubset from "chai-subset";
+chai.use(chaiSubset);
+const assert = chai.assert;
 
 describe('MetaEntity', function () {
+  describe('new', function() {
+    it('should accept type, source, target and current', function () {
+      const meta = new MetaEntity(
+        'item',
+        {attributes: {apiKey: 'foo'}},
+        {attributes: {apiKey: 'bar'}},
+        {attributes: {apiKey: 'foo'}},
+      );
+      assert.instanceOf(meta, MetaEntity);
+      assert.deepEqual(meta.source, {attributes: {apiKey: 'foo'}});
+      assert.deepEqual(meta.target, {attributes: {apiKey: 'bar'}});
+      assert.deepEqual(meta.current, {apiKey: 'foo'});
+    });
+
+    it('should set current to source attributes only when undefined', function () {
+      const meta = new MetaEntity(
+        'item',
+        {attributes: {apiKey: 'foo'}},
+        {attributes: {apiKey: 'bar'}},
+      );
+      assert.instanceOf(meta, MetaEntity);
+      assert.deepEqual(meta.current, {apiKey: 'foo'});
+
+      const meta2 = new MetaEntity(
+        'item',
+        {attributes: {apiKey: 'foo'}},
+        {attributes: {apiKey: 'bar'}},
+        null
+      );
+      assert.instanceOf(meta2, MetaEntity);
+      assert.equal(meta2.current, null);
+    });
+
+    it('should set target to source only when undefined', function () {
+      const meta = new MetaEntity(
+        'item',
+        {attributes: {apiKey: 'foo'}},
+      );
+
+      const meta2 = new MetaEntity(
+        'item',
+        {attributes: {apiKey: 'foo'}},
+        null
+      );
+      assert.instanceOf(meta, MetaEntity);
+      assert.deepEqual(meta.target, meta.source);
+      assert.deepEqual(meta.current, {apiKey: 'foo'});
+
+      assert.instanceOf(meta2, MetaEntity);
+      assert.equal(meta2.target, null);
+      assert.deepEqual(meta2.current, {apiKey: 'foo'});
+    });
+
+    it('should use id from source if present', function () {
+      const meta = new MetaEntity('item', {id: "9999"}, {id: "0001"});
+      assert.equal(meta.id, "9999");
+    });
+
+    it('should use id from target if no source', function () {
+      const meta = new MetaEntity('item', null, {id: "0001"});
+      assert.equal(meta.id, "0001");
+    });
+
+  });
+
   describe('#apiKey()', function () {
     it('should return api key from source when present', function () {
       const entity = new MetaEntity('item', {apiKey: 'foo'}, undefined, undefined);

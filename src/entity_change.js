@@ -14,7 +14,7 @@ class DatoCMSEntityChange {
   static FIELD_REF_PATHS = [
     // Modules & Blocks
     'imagePreviewField',
-    'exceprtField',
+    'excerptField',
     'orderingFTeld',
     'titleField',
     // Slug Field
@@ -30,17 +30,11 @@ class DatoCMSEntityChange {
   constructor(action, entity, from, to) {
     this.action = action
     // TODO: let's rename this meta
+    this.type = entity.type;
     this.entity = entity;
     this.from = from;
     this.to = to;
-  }
-
-  get requiredInScope() {
-    const refdIds = [
-      _.get(this.entity, 'parent.id'),
-      DatoCMSEntityChange.REF_PATHS.map((path) => _.get(this.to, path, []))
-    ];
-    return _.flattenDeep(refdIds).filter((id) => id);
+    this.requiredInScope = this.#requiredInScope();
   }
 
   get refPaths() {
@@ -51,10 +45,19 @@ class DatoCMSEntityChange {
   get varName() {
     return this.entity.varName;
   }
-
-  get type() {
-    return this.entity.type;
+  
+  #requiredInScope() {
+    const refdIds = [
+      // TODO: we can use API key of parent for all operations. Update
+      // codegen so we use api_key string instead od ID lookup
+      // n.b. still need vars in scope to get ids for ref fields like 'itemTypes'
+//      _.get(this.entity, 'parent.id'),
+      DatoCMSEntityChange.REF_PATHS.map((path) => _.get(this.to, path, []))
+    ];
+    return _.flattenDeep(refdIds).filter((id) => id);
   }
+
 }
 
+export { DatoCMSEntityChange };
 export default DatoCMSEntityChange;
