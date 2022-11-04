@@ -1,15 +1,14 @@
-import util from "util";
 import _ from "lodash";
 import chalk from "chalk";
+import commandLineArgs from "command-line-args";
 import Highlight from "@babel/highlight";
 const highlight = Highlight["default"];
+import util from "util";
 
 import DatoCMSEnvironment from "../src/dato_cms_environment.js";
 import envDiff from '../src/env_diff.js';
 import CodeGenerator from '../src/code_generator.js';
 import ChangeManager from '../src/change_manager.js';
-
-const args = process.argv.slice(2);
 
 function info(msg) { console.error(chalk.dim(msg)) }
 function warn(msg) { console.error(chalk.yellow(msg)) }
@@ -69,20 +68,33 @@ function _groupByAction(changes) {
   return {all: changes, ..._.groupBy(changes, 'action')};
 }
 
-async function generate() {
-  const source_env = args[0];
-  const target_env = args[1];
+async function generate(options) {
 
-  info("Loading source env: " + chalk.bold(source_env));
-  const old_env = await DatoCMSEnvironment.getEntities(source_env);
+  var source_env, target_env;
+  if (options.sourceFromFile) {
+    const filepath = options.sourceFromFile;
+    info("Loading source env from file " + chalk.bold(filepath));
+    source_env = DatoCMSEnvironment.thaw(options.sourceFromFile);
+  }
+  else {
+    info("Loading source env from DatoCMS: " + chalk.bold(options.source));
+    source_env = await DatoCMSEnvironment.getEntities(options.source);
+  }
+  if (options.targetFromFile) {
+    const filepath = options.targetFromFile;
+    info("Loading target env from file " + chalk.bold(filepath));
+    target_env = DatoCMSEnvironment.thaw(options.targetFromFile);
+  }
+  else {
+    info("Loading target_env from DatoCMS: " + chalk.bold(options.target));
+    target_env = await DatoCMSEnvironment.getEntities(options.target);
+  }
 
-  info("Loading target env: " + chalk.bold(target_env));
-  const new_env = await DatoCMSEnvironment.getEntities(target_env);
-
-  DatoCMSEnvironment.freeze(new_env, "./test/fixtures/frozen_env.json");
+  DatoCMSEnvironment.freeze(source_env, "source.json");
+  DatoCMSEnvironment.freeze(target_env, "target.json");
 
   info("Comparing environments...");
-  const diff = envDiff(old_env, new_env);
+  const diff = envDiff(source_env, target_env);
 
   summarizeChanges(diff);
 
@@ -99,4 +111,14 @@ async function generate() {
   green('Done!');
 }
 
-generate();
+const optionDefinitions = [
+  { name: 'source', alias: 's', type: String },
+  { name: 'target', alias: 't', type: String },
+  { name: 'source-from-file', alias: 'S', type: String },
+  { name: 'target-from-file', alias: 'T', type: String },
+];
+
+const options = commandLineArgs(optionDefinitions, { camelCase: true });
+
+// TODO: validate options
+generate(options);
