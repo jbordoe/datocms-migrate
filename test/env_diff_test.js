@@ -1,5 +1,9 @@
 import envDiff from "../src/env_diff.js";
-import assert from "assert";
+
+import chai from "chai";
+import chaiSubset from "chai-subset";
+chai.use(chaiSubset);
+const assert = chai.assert;
 
 describe("#envDiff()", function () {
   it("should return no changes if entities match entirely", function () {
@@ -11,6 +15,32 @@ describe("#envDiff()", function () {
     const diff = envDiff(env, env);
     const changes = diff.changes;
     assert.deepEqual(changes, []);
+    assert.containSubset(
+      diff.meta,
+      [
+        {
+          id: "123",
+          type: "item",
+          source: {id: "123", type: "item", attributes: {name: "foo"}},
+          target: {id: "123", type: "item", attributes: {name: "foo"}},
+          current: {name: "foo"},
+        },
+        {
+          id: "234",
+          type: "field",
+          source: {id: "234", type: "field", attributes: {name: "bar"}},
+          target: {id: "234", type: "field", attributes: {name: "bar"}},
+          current: {name: "bar"},
+        },
+        {
+          id: "345",
+          type: "fieldset",
+          source: {id: "345", type: "fieldset", attributes: {name: "baz"}},
+          target: {id: "345", type: "fieldset", attributes: {name: "baz"}},
+          current: {name: "baz"},
+        },
+      ]
+    );
   });
   
   it("should return add changes for new entities", function () {
@@ -25,11 +55,36 @@ describe("#envDiff()", function () {
     const changes = diff.changes;
 
     assert.equal(changes.length, 1);
-    assert.equal(changes[0].action, "add");
-    assert.deepEqual(changes[0].to, {name: "baz"});
+    assert.containSubset(
+      changes[0],
+      {
+        action: "add",
+        from: undefined,
+        to: {name: "baz"},
+      }
+    );
+    assert.containSubset(
+      diff.meta,
+      [
+        {
+          id: "123",
+          type: "item",
+          source: {id: "123", type: "item", attributes: {name: "foo"}},
+          target: {id: "123", type: "item", attributes: {name: "foo"}},
+          current: {name: "foo"},
+        },
+        {
+          id: "345",
+          type: "fieldset",
+          source: null, 
+          target: {id: "345", type: "fieldset", attributes: {name: "baz"}},
+          current: undefined,
+        },
+      ]
+    );
   });
   
-  it("should return del changes for new entities", function () {
+  it("should return del changes for removed entities", function () {
     const envA = [
       { id: "123", type: "item", attributes: {name: "foo"}},
       { id: "345", type: "fieldset", attributes: {name: "baz"}},

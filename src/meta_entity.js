@@ -7,8 +7,13 @@ class MetaEntity {
   constructor(type, source, target, current) {
     this.type = type;
     this.source = source;
-    this.target = target;
-    this.current = structuredClone(_.get(current, 'attributes'));
+    this.target = target === undefined ? source : target;
+    this.current = structuredClone(
+      _.get(
+        current === undefined ? source : current,
+        'attributes'
+      )
+    );
     this.id = _.get(source || target, 'id');
   }
 
