@@ -21,6 +21,7 @@
   "dependencies": {
     "@babel/highlight": "^7.18.6",
     "command-line-args": "^5.2.1",
+    "command-line-usage": "^6.1.3",
     "datocms-client": "^3.5.21",
     "deep-diff": "^1.0.2",
     "p-limit": "^4.0.0"

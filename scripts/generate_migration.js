@@ -1,6 +1,7 @@
 import _ from "lodash";
 import chalk from "chalk";
 import commandLineArgs from "command-line-args";
+import getUsage from "command-line-usage";
 import Highlight from "@babel/highlight";
 const highlight = Highlight["default"];
 import util from "util";
@@ -101,7 +102,7 @@ async function generate(options) {
   if (diff.changes.length) {
     info("Generating instuction set...");
     const migrationSteps = new ChangeManager(99).generateSteps(diff.changes, diff.meta);
-    
+
     info("Translating instructions into Javascript...");
     const codeStr = new CodeGenerator().generate(migrationSteps);
 
@@ -111,14 +112,73 @@ async function generate(options) {
   green('Done!');
 }
 
+function usage(opts) {
+  const sections = [
+    {
+      header: 'DatoCMS Migration Generator',
+      content: 'Compare two environments and generate code to migrate the source environment to the target',
+    },
+    {
+      header: 'Options',
+      optionList: opts,
+      tableOptions: {
+        columns: [
+          {
+            name: 'option',
+            width: 30,
+          },
+          {
+            name: 'description',
+            width: 50,
+          },
+        ]
+      }
+    }
+  ];
+  console.error(getUsage(sections));
+}
+
 const optionDefinitions = [
-  { name: 'source', alias: 's', type: String },
-  { name: 'target', alias: 't', type: String },
-  { name: 'source-from-file', alias: 'S', type: String },
-  { name: 'target-from-file', alias: 'T', type: String },
+  {
+    name: 'help',
+    alias: 'h',
+    description: 'Display this usage guide.',
+    type: Boolean,
+  },
+  {
+    name: 'source',
+    alias: 's',
+    description: 'The name of the source environment.',
+    type: String,
+    typeLabel: '{underline environment}',
+  },
+  {
+    name: 'target',
+    alias: 't',
+    description: 'The name of the target environment.',
+    type: String,
+    typeLabel: '{underline environment}',
+  },
+  {
+    name: 'source-from-file',
+    alias: 'S',
+    description: 'Path of JSON file containing frozen source environment.',
+    type: String,
+    typeLabel: '{underline file}',
+  },
+  {
+    name: 'target-from-file',
+    alias: 'T',
+    type: String,
+    description: 'Path of JSON file containing frozen target environment.',
+    typeLabel: '{underline file}',
+  },
 ];
 
 const options = commandLineArgs(optionDefinitions, { camelCase: true });
-
-// TODO: validate options
-generate(options);
+if (options.help) {
+  usage(optionDefinitions);
+}
+else {
+  generate(options);
+}
