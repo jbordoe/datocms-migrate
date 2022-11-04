@@ -7,6 +7,7 @@ const highlight = Highlight["default"];
 import getDatoCMSEntities from '../src/get_dato_cms_entities.js';
 import envDiff from '../src/env_diff.js';
 import CodeGenerator from '../src/code_generator.js';
+import ChangeManager from '../src/change_manager.js';
 
 const args = process.argv.slice(2);
 
@@ -19,13 +20,49 @@ function dump(obj) {
   console.error(util.inspect(obj, {colors: true, depth: null}));
 }
 
-function summariseChanges(changes) {
-  return {
-    items: _groupByAction(changes.filter(({entity}) => entity.type === "item")),
-    fieldsets: _groupByAction(changes.filter(({entity}) => entity.type === "fieldset")),
-    fields: _groupByAction(changes.filter(({entity}) => entity.type === "field")),
-    all: _groupByAction(changes),
+function summarizeChanges(diff) {
+  const changeDict = {
+    items: _groupByAction(diff.changes.filter(({entity}) => entity.type === "item")),
+    fieldsets: _groupByAction(diff.changes.filter(({entity}) => entity.type === "fieldset")),
+    fields: _groupByAction(diff.changes.filter(({entity}) => entity.type === "field")),
+    all: _groupByAction(diff.changes),
   };
+
+  const summary = [];
+  [
+    {type: 'model/block', changes: changeDict.items},
+    {type: 'field',       changes: changeDict.fields},
+    {type: 'fieldset',    changes: changeDict.fieldsets},
+  ].forEach(({type, changes}) => {
+    if (changes.add && changes.add.length) {
+      summary.push(chalk.greenBright(`  ${changes.add.length} ${type}(s) to create`));
+      changes.add.forEach(({entity: obj}) => {
+        summary.push(chalk.green(`    + ${obj.label}`));
+      });
+    }
+    if (changes.del && changes.del.length) {
+      summary.push(chalk.redBright(`  ${changes.del.length} ${type}(s) to destroy`));
+      changes.del.forEach(({entity: obj}) => {
+        summary.push(chalk.red(`    - ${obj.label}`));
+      });
+    }
+    const allMod = [...(changes.mod || []), ...(changes.modRef || [])].flat();
+    if (allMod && allMod.length) {
+      summary.push(chalk.yellowBright(`  ${allMod.length} ${type}(s) to update`));
+      allMod.forEach(({entity: obj}) => {
+        summary.push(chalk.yellow(`    ~ ${obj.label}`));
+      });
+    }
+  });
+
+  if (!summary.length) {
+    warn("\nNo changes to make!");
+  }
+  else {
+    summary.unshift(chalk.bold('\nSummary:'));
+    summary.push('');
+    console.error(summary.join("\n"));
+  }
 }
 
 function _groupByAction(changes) {
@@ -45,44 +82,15 @@ async function generate() {
   info("Comparing environments...");
   const diff = envDiff(old_env.all, new_env.all);
 
-  const summarised = summariseChanges(diff.changes);
-  var summary = [chalk.bold('\nSummary:')];
-  [
-    {type: 'model/block', changes: summarised.items},
-    {type: 'field',       changes: summarised.fields},
-    {type: 'fieldset',    changes: summarised.fieldsets},
-  ].forEach(({type, changes}) => {
-    if (changes.add && changes.add.length) {
-      summary.push(chalk.greenBright(`  ${changes.add.length} ${type}(s) to create`));
-      changes.add.forEach(({entity: obj}) => {
-        const label = obj.target.label || obj.target.name || obj.target.title;
-        summary.push(chalk.green(`    + ${label}`));
-      });
-    }
-    if (changes.del && changes.del.length) {
-      summary.push(chalk.redBright(`  ${changes.del.length} ${type}(s) to destroy`));
-      changes.del.forEach(({entity: obj}) => {
-        const label = obj.current.label || obj.current.name || obj.current.title;
-        summary.push(chalk.red(`    - ${label}`));
-      });
-    }
-    const allMod = [...(changes.mod || []), ...(changes.modRef || [])].flat();
-    if (allMod && allMod.length) {
-      summary.push(chalk.yellowBright(`  ${allMod.length} ${type}(s) to update`));
-      allMod.forEach(({entity: obj}) => {
-        const label = obj.current.label || obj.current.name || obj.current.title;
-        summary.push(chalk.yellow(`    ~ ${label}`));
-      });
-    }
-  });
-  summary.push('');
+  summarizeChanges(diff);
 
-  if (summary.length == 2) {
-    warn("\nNo changes to make, skipping migration");
-  } else {
-    console.error(summary.join("\n"))
+  if (diff.changes.length) {
+    info("Generating instuction set...");
+    const migrationSteps = new ChangeManager(99).generateSteps(diff.changes, diff.meta);
     
-    const codeStr = new CodeGenerator().generate(summarised, diff.meta);
+    info("Translating instructions into Javascript...");
+    const codeStr = new CodeGenerator().generate(migrationSteps);
+
     info('Writing migration code to STDOUT...\n');
     console.log(highlight(codeStr));
   }

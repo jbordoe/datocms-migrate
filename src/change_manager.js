@@ -1,4 +1,7 @@
 import _ from "lodash"
+import v8 from 'v8';
+
+const structuredClone = (obj) => v8.deserialize(v8.serialize(obj));
 
 class ChangeManager {
   static SORT_KEYS = [
@@ -6,7 +9,9 @@ class ChangeManager {
     'item.del', 'item.mod', 'item.add',
     'fieldset.del', 'fieldset.mod', 'fieldset.add',
     'field.del', 'field.mod', 'field.add',
+    // TODO: handle this more sensibly
     'slug.add', 'slug.modRefs',
+    'slug.del', 'slug.mod',
     'item.modRefs', 'field.modRefs',
   ].reduce((obj, el, i) => ({[el]: i, ...obj}), {});
 
@@ -41,7 +46,7 @@ class ChangeManager {
       action: action,
       type: type,
       entity: entity,
-      attrs: attrs,
+      attrs: structuredClone(attrs),
       varName: _.get(entity, 'varName'),
       idType: entity ? (type === "fieldset" ? "id" : "apiKey") : undefined,
       scope: action === "scope",
@@ -101,7 +106,8 @@ class ChangeManager {
       const scopeSteps = this.#stepScopeReqs(step, inScope)
         .map(reqId => this.#scope( this.state.entityIds[reqId] ));
 
-      return [step, ...scopeSteps]
+      // TODO: test the ordering here
+      return [...scopeSteps, step]
     }).flat();
   }
 
@@ -119,14 +125,30 @@ class ChangeManager {
       // and need flags to represent things like 'am i in scope'?
       step.entity.updateState({action: step.action, to: step.attrs})
     }
-    if (step.action == "del") {
+    // TODO: this shouldn't be necessary
+    if (step.scope && this.state.inScope.has(step.entity.id)) {
+      step.scope = false;
+      if (step.action == "scope") { return }
+    }
+    // TODO: another hack these should be filtered out at diffing stage
+    if (["mod", "modRefs"].includes(step.action) && _.isEmpty(step.attrs)) { return }
+    if (step.action === "del") {
+      // TODO: why aren't we removing entity.id from inScope?
+
       // This field/set may not be present because parent has already been deleted
       // If so, we don't need to commit this step
       if (!this.state.current.includes(step.entity.id)) { return }
+      // TODO: test that items aren't added to scope twice
+
       // When we delete an item, mark all it's field/sets as deleted too
-      if(step.type == "item") {
+      // TODO: need more detail in current state. E.g when I delete a field,
+      // the position of all other subsequent fields should automatically change.
+      // After this, any position updates that do the same should be dropped
+      // More generally - try to simulate effects of each step on entities, and
+      // take that into account to modify or drop steps before comitting
+      if(step.type === "item") {
         this.state.entities.filter((e) => _.get(e, "parent.id") === step.entity.id)
-          .forEach((e) => e.current = undefined);
+          .forEach((e) => e.current = null);
       }
     }
     else if (step.refPaths) {
@@ -149,6 +171,7 @@ class ChangeManager {
       step.parentKey = _.get(step.entity, 'parent.apiKey');
     }
     step.parentKey = _.get(step, 'entity.parent.apiKey');
+    // TODO: whut? 
     this.state.current = this.state.entities.filter(({current}) => !!current).map(({id}) => id);
     this.committed.push(_.omit(step, "entity"))
   }

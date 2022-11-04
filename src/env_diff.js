@@ -1,5 +1,8 @@
 import _ from "lodash"
 import util from "util";
+import v8 from 'v8';
+
+const structuredClone = (obj) => v8.deserialize(v8.serialize(obj));
 
 import DatoCMSEntityChange from "../src/entity_change.js";
 import MetaEntity from "../src/meta_entity.js";
@@ -60,14 +63,14 @@ function pickAttrs(entity) {
       ...DatoCMSEntityChange.REF_PATHS
     ])
     .value();
-  return !_.isEmpty(attrs) ? attrs : undefined;
+  return !_.isEmpty(attrs) ? structuredClone(attrs) : undefined;
 }
 
 function pickRefs(entity) {
   const attrs = _(_.get(entity, 'attributes', {}))
     .pick(DatoCMSEntityChange.REF_PATHS)
     .value();
-  return !_.isEmpty(attrs) ? attrs : undefined;
+  return !_.isEmpty(attrs) ? structuredClone(attrs) : undefined;
 }
 
 export default envDiff;
