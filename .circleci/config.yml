@@ -1,10 +1,12 @@
 version: 2.1
 orbs:
   node: circleci/node@5.0.2
+  coveralls: coveralls/coveralls@1.0.5
 
 jobs:
   test:
     executor: node/default
+    working_directory: ~/project
     steps:
       - checkout
       - node/install:
@@ -12,10 +14,25 @@ jobs:
       - node/install-packages:
           pkg-manager: npm
       - run:
-          command: npm test
+          command: npm test && npm run coverage > ./coverage/lcov.info
           name: Run tests
+      - persist_to_workspace:
+          root: ~/
+          paths:
+            - "project"
+
+  done:
+    working_directory: ~/project
+    executor: node/default
+    steps:
+      - attach_workspace:
+          at: ~/
+      - coveralls/upload
 
 workflows:
-  test_my_app:
+  test-cover:
     jobs:
       - test
+      - done:
+          requires:
+            - test
