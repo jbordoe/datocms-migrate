@@ -7,7 +7,6 @@ const highlight = Highlight["default"];
 import util from "util";
 
 import DatoCMSEnvironment from "../src/dato_cms_environment.js";
-import envDiff from '../src/env_diff.js';
 import CodeGenerator from '../src/code_generator.js';
 import ChangeManager from '../src/change_manager.js';
 
@@ -95,7 +94,7 @@ async function generate(options) {
   DatoCMSEnvironment.freeze(target_env, "target.json");
 
   info("Comparing environments...");
-  const diff = envDiff(source_env, target_env);
+  const diff = DatoCMSEnvironment.diff(source_env, target_env);
 
   summarizeChanges(diff);
 
