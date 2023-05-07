@@ -39,6 +39,32 @@ class DatoCMSEntity {
       fieldset: null
     }
   };
+  
+  static ITEM_REF_PATHS = [
+    // Link fields
+    'validators.itemItemType.itemTypes',
+    'validators.itemsItemType.itemTypes',
+    // Modular Content Fields
+    'validators.richTextBlocks.itemTypes',
+    // Structured Text Fields
+    'validators.structuredTextBlocks.itemTypes',
+    'validators.structuredTextLinks.itemTypes',
+  ];
+  static FIELD_REF_PATHS = [
+    // Modules & Blocks
+    'imagePreviewField',
+    'excerptField',
+    'orderingFTeld',
+    'titleField',
+    // Slug Field
+    'validators.slugTitleField.titleFieldId',
+  ];
+  static FIELDSET_REF_PATHS = ['fieldset'];
+  static REF_PATHS = [
+    ...DatoCMSEntity.ITEM_REF_PATHS,
+    ...DatoCMSEntity.FIELD_REF_PATHS,
+    ...DatoCMSEntity.FIELDSET_REF_PATHS
+  ];
 
   constructor(type, attributes, parentItem = undefined) {
     this.type = type;

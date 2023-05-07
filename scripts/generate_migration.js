@@ -20,36 +20,35 @@ function dump(obj) {
 }
 
 function summarizeChanges(diff) {
-  const changeDict = {
-    items: _groupByAction(diff.changes.filter(({entity}) => entity.type === "item")),
-    fieldsets: _groupByAction(diff.changes.filter(({entity}) => entity.type === "fieldset")),
-    fields: _groupByAction(diff.changes.filter(({entity}) => entity.type === "field")),
-    all: _groupByAction(diff.changes),
+  const entityDict = {
+    items: _groupByAction(diff.filter(({ type }) => type === "item")),
+    fieldsets: _groupByAction(diff.filter(({ type }) => type === "fieldset")),
+    fields: _groupByAction(diff.filter(({ type }) => type === "field")),
   };
 
   const summary = [];
   [
-    {type: 'model/block', changes: changeDict.items},
-    {type: 'field',       changes: changeDict.fields},
-    {type: 'fieldset',    changes: changeDict.fieldsets},
-  ].forEach(({type, changes}) => {
-    if (changes.add && changes.add.length) {
-      summary.push(chalk.greenBright(`  ${changes.add.length} ${type}(s) to create`));
-      changes.add.forEach(({entity: obj}) => {
-        summary.push(chalk.green(`    + ${obj.label}`));
+    {type: 'model/block', entities: entityDict.items},
+    {type: 'field',       entities: entityDict.fields},
+    {type: 'fieldset',    entities: entityDict.fieldsets},
+  ].forEach(({type, entities}) => {
+    if (entities.add && entities.add.length) {
+      summary.push(chalk.greenBright(`  ${entities.add.length} ${type}(s) to create`));
+      entities.add.forEach(entity => {
+        summary.push(chalk.green(`    + ${entity.label}`));
       });
     }
-    if (changes.del && changes.del.length) {
-      summary.push(chalk.redBright(`  ${changes.del.length} ${type}(s) to destroy`));
-      changes.del.forEach(({entity: obj}) => {
-        summary.push(chalk.red(`    - ${obj.label}`));
+    if (entities.del && entities.del.length) {
+      summary.push(chalk.redBright(`  ${entities.del.length} ${type}(s) to destroy`));
+      entities.del.forEach(entity => {
+        summary.push(chalk.red(`    - ${entity.label}`));
       });
     }
-    const allMod = [...(changes.mod || []), ...(changes.modRef || [])].flat();
+    const allMod = [...(entities.mod || []), ...(entities.modRef || [])].flat();
     if (allMod && allMod.length) {
       summary.push(chalk.yellowBright(`  ${allMod.length} ${type}(s) to update`));
-      allMod.forEach(({entity: obj}) => {
-        summary.push(chalk.yellow(`    ~ ${obj.label}`));
+      allMod.forEach(entity => {
+        summary.push(chalk.yellow(`    ~ ${entity.label}`));
       });
     }
   });
@@ -64,8 +63,18 @@ function summarizeChanges(diff) {
   }
 }
 
-function _groupByAction(changes) {
-  return {all: changes, ..._.groupBy(changes, 'action')};
+function _groupByAction(entities) {
+  return _.groupBy(entities, entity => {
+    if (entity.source && entity.target) {
+      if (entity.label === "Newsletter Page") {
+        console.log(entity.diff);
+        console.log(entity.refDiff);
+      }
+      return entity.diff || entity.refDiff ? "mod" : "na";
+    }
+    else if (entity.source && !entity.target) { return "del" }
+    else { return  "add" }
+  });
 }
 
 async function generate(options) {
@@ -98,9 +107,9 @@ async function generate(options) {
 
   summarizeChanges(diff);
 
-  if (diff.changes.length) {
+  if (diff.length) {
     info("Generating instuction set...");
-    const migrationSteps = new ChangeManager(99).generateSteps(diff.changes, diff.meta);
+    const migrationSteps = new ChangeManager(99).generateSteps(diff);
 
     info("Translating instructions into Javascript...");
     const codeStr = new CodeGenerator().generate(migrationSteps);

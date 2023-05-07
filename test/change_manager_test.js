@@ -1,7 +1,6 @@
 import ChangeManager from "../src/change_manager.js";
 
 import MetaEntity from "../src/meta_entity.js";
-import { DatoCMSEntityChange as Change } from "../src/entity_change.js";
 
 import chai from "chai";
 import chaiSubset from "chai-subset";
@@ -12,17 +11,21 @@ describe("ChangeManager", function () {
   describe("#generateSteps()", function () {
     it("should return add steps for item add changes", function () {
       const entities = [
-        new MetaEntity("item", undefined, {id: "123"}, undefined),
-        new MetaEntity("item", undefined, {id: "234"}, undefined),
-      ];
-      const changes = [
-        new Change("add", entities[0], undefined, {foo: "bar"}),
-        new Change("add", entities[1], undefined, {foo: "baz"}),
+        new MetaEntity(
+          "item",
+          undefined,
+          {id: "123", attributes: {foo: "bar"}}
+        ),
+        new MetaEntity(
+          "item",
+          undefined,
+          {id: "234", attributes: {foo: "baz"}}
+        ),
       ];
 
       const manager = new ChangeManager();
       assert.containSubset(
-        manager.generateSteps(changes, []),
+        manager.generateSteps(entities),
         [
           {action: "add", type: "item", attrs: {foo: "bar"}, scope: false},
           {action: "add", type: "item", attrs: {foo: "baz"}, scope: false},
@@ -30,14 +33,35 @@ describe("ChangeManager", function () {
       );
     });
 
-    it("should sort steps", function () {
+    it("should sort steps by type and action", function () {
       const entities = [
-        new MetaEntity("item", {id: "100", attributes: {}}),
-        new MetaEntity("item", {id: "101", attributes: {}}),
-        new MetaEntity("field", {id: "200", attributes: {}}),
-        new MetaEntity("field", {id: "201", attributes: {}}),
-        new MetaEntity("fieldset", {id: "300", attributes: {}}),
-        new MetaEntity("fieldset", {id: "301", attributes: {}}),
+        new MetaEntity(
+          "item",
+          undefined,
+          {id: "100", attributes: {name: "A1"}}
+        ),
+        new MetaEntity(
+          "item",
+          {id: "101", attributes: {name: "D1"}},
+          undefined
+        ),
+        new MetaEntity(
+          "field",
+          undefined,
+          {id: "200", attributes: {name: "A2"}}
+        ),
+        new MetaEntity(
+          "field",
+          {id: "201", attributes: {name: "D2"}}
+        ),
+        new MetaEntity(
+          "fieldset",
+          {id: "300", attributes: {name: "A3"}}
+        ),
+        new MetaEntity(
+          "fieldset",
+          {id: "301", attributes: {}}
+        ),
       ];
       const changes = [
         new Change("add", entities[0], {}, {foo: "bar"}),
@@ -54,7 +78,7 @@ describe("ChangeManager", function () {
       ];
 
       const manager = new ChangeManager();
-      const steps = manager.generateSteps(changes, entities);
+      const steps = manager.generateSteps(entities);
       assert.deepEqual(
         steps.map(({action, type}) => ({action: action, type: type})),
         [

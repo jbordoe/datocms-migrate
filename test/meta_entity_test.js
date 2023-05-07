@@ -73,11 +73,11 @@ describe('MetaEntity', function () {
 
   describe('#apiKey()', function () {
     it('should return api key from source when present', function () {
-      const entity = new MetaEntity('item', {apiKey: 'foo'}, undefined, undefined);
+      const entity = new MetaEntity('item', {apiKey: 'foo'});
       assert.equal(entity.apiKey, 'foo');
     });
     it('should return api key from target when no source', function () {
-      const entity = new MetaEntity('item', undefined, {apiKey: 'foo'}, undefined);
+      const entity = new MetaEntity('item', undefined, {apiKey: 'foo'});
       assert.equal(entity.apiKey, 'foo');
     });
   });
@@ -190,7 +190,7 @@ describe('MetaEntity', function () {
       assert.equal(entity.current, undefined);
     });
 
-    it('should create state with attrs from add function', function () {
+    it('should create state with defaults and attrs from add function', function () {
       const entity = new MetaEntity(
         'item',
         {varName: 'foo'},

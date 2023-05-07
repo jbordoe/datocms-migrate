@@ -8,7 +8,6 @@ import v8 from 'v8';
 const structuredClone = (obj) => v8.deserialize(v8.serialize(obj));
 
 import DatoCMSEntity from '../src/dato_cms_entity.js';
-import DatoCMSEntityChange from "../src/entity_change.js";
 import MetaEntity from "../src/meta_entity.js";
 
 class DatoCMSEnvironment {
@@ -60,58 +59,7 @@ class DatoCMSEnvironment {
       })
       .value();
 
-    const changes = metaEntities.map((meta) => {
-      const [oldE, newE] = [meta.source, meta.target];
-      const [oldAttrs, newAttrs] = [this.#pickAttrs(oldE), this.#pickAttrs(newE)];
-      const [oldRefs, newRefs]   = [this.#pickRefs(oldE), this.#pickRefs(newE)];
-
-      var changes = [];
-      if (newE && !oldE) {
-        if (newAttrs) {
-          changes.push(new DatoCMSEntityChange('add', meta, undefined, newAttrs));
-        }
-      }
-      else if (oldE && !newE) {
-        if (oldAttrs) {
-          changes.push(new DatoCMSEntityChange('del', meta, oldAttrs, undefined));
-        }
-      }
-      else if (newE && oldE) {
-        // TODO: use deep diff to extract only modified paths
-        if (newAttrs && oldAttrs && this.#toStr(newAttrs) != this.#toStr(oldAttrs)) {
-          changes.push(new DatoCMSEntityChange('mod', meta, oldAttrs, newAttrs));
-        }
-      }
-      if (newRefs && this.#toStr(newRefs) != this.#toStr(oldRefs)) {
-        changes.push(new DatoCMSEntityChange('modRefs', meta, oldRefs, newRefs));
-      }
-      return changes;
-    }).flat()
-      .filter(x => x);
-
-    return { meta: metaEntities, changes: changes };
-  }
-
-  static #pickAttrs(entity) {
-    const attrs = _(_.get(entity, 'attributes', {}))
-      .omit([
-        'id', 'type', 'meta',
-        'fields', 'fieldsets', 'itemType',
-        ...DatoCMSEntityChange.REF_PATHS
-      ])
-      .value();
-    return !_.isEmpty(attrs) ? structuredClone(attrs) : undefined;
-  }
-
-  static #pickRefs(entity) {
-    const attrs = _(_.get(entity, 'attributes', {}))
-      .pick(DatoCMSEntityChange.REF_PATHS)
-      .value();
-    return !_.isEmpty(attrs) ? structuredClone(attrs) : undefined;
-  }
-
-  static #toStr(obj) {
-    return util.inspect(obj, {depth: null, compact: true, sorted: true});
+    return metaEntities;
   }
 
   static freeze(entities, filename) {

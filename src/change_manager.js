@@ -1,7 +1,9 @@
 import _ from "lodash"
 import v8 from 'v8';
 
-const structuredClone = (obj) => v8.deserialize(v8.serialize(obj));
+const clone = (obj) => v8.deserialize(v8.serialize(obj));
+
+import DatoCMSEntity from '../src/dato_cms_entity.js';
 
 class ChangeManager {
   static SORT_KEYS = [
@@ -19,7 +21,7 @@ class ChangeManager {
     this.seed = seed;
   }
 
-  generateSteps(changeset, entities) {
+  generateSteps(entities) {
     this.committed = [];
     this.state = {
       vars: {},
@@ -30,8 +32,9 @@ class ChangeManager {
       id2var: entities.reduce((obj, {id, varName}) => ({[id]: varName, ...obj}), {}),
     }
 
-    var steps = _(changeset)
+    var steps = _(entities)
       .map((ch) => this.#convert(ch))
+      .flatten()
       .sortBy(step => this.#sortKey(step))
       .value();
 
@@ -41,34 +44,48 @@ class ChangeManager {
     return this.committed;
   }
 
-  #step(action, type, entity = undefined, attrs = undefined, refPaths) {
+
+  #step(action, entity) {
     return {
       action: action,
-      type: type,
+      type: _.get(entity, 'type'),
       entity: entity,
-      attrs: structuredClone(attrs),
       varName: _.get(entity, 'varName'),
-      idType: entity ? (type === "fieldset" ? "id" : "apiKey") : undefined,
+      idType: _.get(entity, 'idType'), 
       scope: action === "scope",
       parentVar: _.get(entity, 'parent.varName'),
-      refIds: attrs ? refPaths.map(p => _.get(attrs, p)).filter(p => !!p).flat() : null,
-      refPaths: refPaths,
+//      refdIds: _.get(entity, 'refdIds'), 
+//      refPaths: _.get(entity, 'refPaths'),
+      attrs: clone(
+        _.get(entity, action === "modRefs" ? 'refDiff' : 'diff')),
     };
   }
-  #fetchAll(entity) {
-    return this.#step("fetchAll", entity.type);
-  }
   #scope(entity) {
-    return this.#step("scope", entity.type, entity);
+    return this.#step("scope", entity);
   }
-  #convert(change) {
-    return this.#step(
-      change.action,
-      change.type,
-      change.entity,
-      change.to,
-      change.refPaths,
-    )
+  #convert(entity) {
+    const steps = []
+    
+    if (entity.refDiff) { steps.push(this.#step("modRefs", entity)) }
+    if (entity.source && entity.target) {
+      if (entity.diff) { steps.push(this.#step("mod", entity)) }
+    }
+    else {
+      const action = entity.source && !entity.target ? "del" : "add";
+      steps.push(this.#step(action, entity));
+    }
+    return steps;
+  }
+
+  #refPaths(step) {
+    return DatoCMSEntity.REF_PATHS
+      .filter((path) => _.get(step.attrs, path));
+  }
+  #refdIds(step) {
+    return this.#refPaths(step)
+      .map(path => _.get(step.attrs, path))
+      .filter(ref => !!ref)
+      .flat();
   }
 
   #sortKey(step) {
@@ -112,7 +129,8 @@ class ChangeManager {
   }
 
   #stepScopeReqs(step, inScope = new Set()) {
-    return step.refIds ? step.refIds.filter(refId => !inScope.has(refId)) : [];
+    return (this.#refdIds(step) || [])
+      .filter(refId => !inScope.has(refId));
   }
 
   #commit(steps) {
@@ -120,9 +138,14 @@ class ChangeManager {
   }
 
   #commitStep(step) {
+    if (["mod", "modRefs"].includes(step.action)) {
+      const updatedAttrs = step.entity.changes(step.attrs);
+      // If the updates won't have an effect on the entity, do nothing
+      if (!updatedAttrs) { return }
+      else { step.attrs = updatedAttrs }
+    }
     if (["add", "del", "mod", "modRefs"].includes(step.action)) {
       // TODO: meta-entity updates should accept steps not changes
-      // and need flags to represent things like 'am i in scope'?
       step.entity.updateState({action: step.action, to: step.attrs})
     }
     // TODO: this shouldn't be necessary
@@ -130,8 +153,6 @@ class ChangeManager {
       step.scope = false;
       if (step.action == "scope") { return }
     }
-    // TODO: another hack these should be filtered out at diffing stage
-    if (["mod", "modRefs"].includes(step.action) && _.isEmpty(step.attrs)) { return }
     if (step.action === "del") {
       // TODO: why aren't we removing entity.id from inScope?
 
@@ -140,7 +161,7 @@ class ChangeManager {
       if (!this.state.current.includes(step.entity.id)) { return }
       // TODO: test that items aren't added to scope twice
 
-      // When we delete an item, mark all it's field/sets as deleted too
+      // TODO: When we delete an item, mark all it's field/sets as deleted too
       // TODO: need more detail in current state. E.g when I delete a field,
       // the position of all other subsequent fields should automatically change.
       // After this, any position updates that do the same should be dropped
@@ -151,10 +172,12 @@ class ChangeManager {
           .forEach((e) => e.current = null);
       }
     }
-    else if (step.refPaths) {
+    else {
+      const refPaths = this.#refPaths(step) || [];
       const refVars = {};
-      const paths = step.refPaths.filter(p => !!_.get(step.attrs, p));
-      paths.forEach(path => {
+      refPaths
+        .filter(p => !!_.get(step.attrs, p))
+        .forEach(path => {
         const refId = _.get(step.attrs, path);
         const varName = typeof(refId) === 'string'
           ? this.state.id2var[refId]
